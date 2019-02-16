@@ -158,6 +158,7 @@ def get_tf_version_tuple():
     """
     Return TensorFlow version as a 2-element tuple (for comparison).
     """
+    return (1, 13)
     return tuple(map(int, tf.__version__.split('.')[:2]))
 
 

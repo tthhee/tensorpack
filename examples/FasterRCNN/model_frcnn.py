@@ -287,9 +287,10 @@ def fastrcnn_Xconv1fc_head(feature, num_convs, norm=None):
                       scale=2.0, mode='fan_out',
                       distribution='untruncated_normal' if get_tf_version_tuple() >= (1, 12) else 'normal')):
         for k in range(num_convs):
-            l = Conv2D('conv{}'.format(k), l, cfg.FPN.FRCNN_CONV_HEAD_DIM, 3, activation=tf.nn.relu)
+            l = Conv2D('conv{}'.format(k), l, cfg.FPN.FRCNN_CONV_HEAD_DIM, 3, activation=tf.identity)
             if norm is not None:
                 l = GroupNorm('gn{}'.format(k), l)
+            l = tf.nn.relu(l)
         l = FullyConnected('fc', l, cfg.FPN.FRCNN_FC_HEAD_DIM,
                            kernel_initializer=tf.variance_scaling_initializer(), activation=tf.nn.relu)
     return l

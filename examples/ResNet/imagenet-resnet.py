@@ -16,6 +16,7 @@ from tensorpack.utils.gpu import get_num_gpu
 from imagenet_utils import ImageNetModel, eval_on_ILSVRC12, get_imagenet_dataflow, get_imagenet_tfdata
 from resnet_model import (
     preresnet_basicblock, preresnet_bottleneck, preresnet_group, resnet_backbone, resnet_basicblock, resnet_bottleneck,
+    resnext_32x4d_bottleneck,
     resnet_group, se_resnet_bottleneck)
 
 
@@ -27,6 +28,7 @@ class Model(ImageNetModel):
         self.mode = mode
         basicblock = preresnet_basicblock if mode == 'preact' else resnet_basicblock
         bottleneck = {
+            'resnext': resnext_32x4d_bottleneck,
             'resnet': resnet_bottleneck,
             'preact': preresnet_bottleneck,
             'se': se_resnet_bottleneck}[mode]
@@ -117,14 +119,18 @@ if __name__ == '__main__':
                         help="total batch size. "
                         "Note that it's best to keep per-GPU batch size in [32, 64] to obtain the best accuracy."
                         "Pretrained models listed in README were trained with batch=32x8.")
-    parser.add_argument('--mode', choices=['resnet', 'preact', 'se'],
+    parser.add_argument('--mode',
                         help='variants of resnet to use', default='resnet')
+    parser.add_argument('--wdbn', action='store_true')
+
     args = parser.parse_args()
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     model = Model(args.depth, args.mode)
+    if args.wdbn:
+        model.weight_decay_pattern='.*/W|.*/gamma|.*/beta'
     model.data_format = args.data_format
     if args.eval:
         batch = 128    # something that can run on one gpu
@@ -136,8 +142,9 @@ if __name__ == '__main__':
         else:
             logger.set_logger_dir(
                 os.path.join('train_log',
-                             'imagenet-{}-d{}-batch{}'.format(
-                                 args.mode, args.depth, args.batch)))
+                             'imagenet-{}-d{}-batch{}{}'.format(
+                                 args.mode, args.depth, args.batch,
+                                 "-wdbn" if args.wdbn else "")))
 
         config = get_config(model)
         if args.load:
