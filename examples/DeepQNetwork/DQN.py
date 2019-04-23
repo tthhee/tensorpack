@@ -103,7 +103,8 @@ class Model(DQNModel):
 def get_config(model):
     expreplay = ExpReplay(
         predictor_io_names=(['state'], ['Qvalue']),
-        player=get_player(train=True),
+        get_player=lambda: get_player(train=True),
+        num_parallel_players=2,
         state_shape=model.state_shape,
         batch_size=BATCH_SIZE,
         memory_size=MEMORY_SIZE,
