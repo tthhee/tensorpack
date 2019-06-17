@@ -12,6 +12,7 @@ from tensorpack.contrib.keras import KerasPhaseCallback
 from tensorpack.dataflow import dataset
 from tensorpack.utils.argtools import memoized
 from tensorpack.utils.gpu import get_num_gpu
+from tensorpack.tfutils.tower import get_current_tower_context
 
 KL = keras.layers
 
@@ -19,7 +20,8 @@ KL = keras.layers
 This is an mnist example demonstrating how to use Keras symbolic function inside tensorpack.
 This way you can define models in Keras-style, and benefit from the more efficeint trainers in tensorpack.
 
-Note: this example does not work for replicated-style data-parallel trainers.
+Note: this example does not work for replicated-style data-parallel trainers, so may be less efficient
+for some models.
 """
 
 IMAGE_SIZE = 28
@@ -41,7 +43,7 @@ def clear_tower0_name_scope():
 def get_keras_model():
     with clear_tower0_name_scope():
         M = keras.models.Sequential()
-        M.add(KL.Conv2D(32, 3, activation='relu', input_shape=[IMAGE_SIZE, IMAGE_SIZE, 1], padding='same'))
+        M.add(KL.Conv2D(32, 3, activation='relu', padding='same'))
         M.add(KL.MaxPooling2D())
         M.add(KL.Conv2D(32, 3, activation='relu', padding='same'))
         M.add(KL.Conv2D(32, 3, activation='relu', padding='same'))
@@ -61,9 +63,14 @@ class Model(ModelDesc):
 
     def build_graph(self, image, label):
         image = tf.expand_dims(image, 3) * 2 - 1
+        ctx = get_current_tower_context()
 
         M = get_keras_model()
         logits = M(image)
+        if ctx.is_main_training_tower:
+            for op in M.updates:
+                tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, op)
+
         # build cost function by tensorflow
         cost = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=label)
         cost = tf.reduce_mean(cost, name='cross_entropy_loss')  # the average cross-entropy loss

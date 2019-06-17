@@ -65,6 +65,20 @@ else:
     except Exception:
         pass
 
+    # silence the massive deprecation warnings in TF 1.13+
+    if (int(_version[0]), int(_version[1])) >= (1, 13):
+        try:
+            from tensorflow.python.util.deprecation import silence
+        except Exception:
+            pass
+        else:
+            silence().__enter__()
+        try:
+            from tensorflow.python.util import deprecation_wrapper
+            deprecation_wrapper._PER_MODULE_WARNING_LIMIT = 0
+        except Exception:
+            pass
+
     # Monkey-patch tf.test.is_gpu_available to avoid side effects:
     # https://github.com/tensorflow/tensorflow/issues/26460
     try:
@@ -84,5 +98,5 @@ else:
 
 # These lines will be programatically read/write by setup.py
 # Don't touch them.
-__version__ = '0.9.4'
+__version__ = '0.9.5'
 __git_version__ = __version__

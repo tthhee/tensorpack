@@ -11,14 +11,16 @@ import tensorflow as tf
 import tqdm
 
 from tensorpack import ModelDesc
-from tensorpack.dataflow import AugmentImageComponent, BatchData, MultiThreadMapData, PrefetchDataZMQ, dataset, imgaug
+from tensorpack.dataflow import (
+    AugmentImageComponent, BatchData, MultiThreadMapData,
+    MultiProcessRunnerZMQ, dataset, imgaug)
 from tensorpack.input_source import QueueInput, StagingInput
 from tensorpack.models import regularize_cost, l2_regularizer
 from tensorpack.predict import FeedfreePredictor, PredictConfig
 from tensorpack.tfutils.summary import add_moving_summary
+from tensorpack.tfutils.optimizer import AccumGradOptimizer
 from tensorpack.utils import logger
 from tensorpack.utils.stats import RatioCounter
-
 
 """
 ====== DataFlow =======
@@ -88,7 +90,7 @@ def get_imagenet_dataflow(
         ds = AugmentImageComponent(ds, augmentors, copy=False)
         if parallel < 16:
             logger.warn("DataFlow may become the bottleneck when too few processes are used.")
-        ds = PrefetchDataZMQ(ds, parallel)
+        ds = MultiProcessRunnerZMQ(ds, parallel)
         ds = BatchData(ds, batch_size, remainder=False)
     else:
         ds = dataset.ILSVRC12Files(datadir, name, shuffle=False)
@@ -101,7 +103,7 @@ def get_imagenet_dataflow(
             return im, cls
         ds = MultiThreadMapData(ds, parallel, mapf, buffer_size=2000, strict=True)
         ds = BatchData(ds, batch_size, remainder=True)
-        ds = PrefetchDataZMQ(ds, 1)
+        ds = MultiProcessRunnerZMQ(ds, 1)
     return ds
 
 
@@ -327,6 +329,11 @@ class ImageNetModel(ModelDesc):
     """
     label_smoothing = 0.
 
+    """
+    Accumulate gradients across several steps (by default 1, which means no accumulation across steps).
+    """
+    accum_grad = 1
+
     def inputs(self):
         return [tf.TensorSpec([None, self.image_shape, self.image_shape, 3], self.image_dtype, 'input'),
                 tf.TensorSpec([None], tf.int32, 'label')]
@@ -370,7 +377,10 @@ class ImageNetModel(ModelDesc):
     def optimizer(self):
         lr = tf.get_variable('learning_rate', initializer=0.1, trainable=False)
         tf.summary.scalar('learning_rate-summary', lr)
-        return tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
+        opt = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
+        if self.accum_grad != 1:
+            opt = AccumGradOptimizer(opt, self.accum_grad)
+        return opt
 
     def image_preprocess(self, image):
         with tf.name_scope('image_preprocess'):
